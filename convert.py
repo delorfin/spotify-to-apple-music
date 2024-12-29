@@ -170,7 +170,7 @@ def get_track_details(track_id, session):
     return None
 
 def write_error_report(filename, failed_tracks):
-    """Write a detailed HTML error report for failed tracks with country-specific links"""
+    """Write a detailed HTML error report for failed tracks with corrected app links"""
     html_content = f"""
     <!DOCTYPE html>
     <html>
@@ -187,15 +187,15 @@ def write_error_report(filename, failed_tracks):
             .button-group {{ margin-top: 10px; }}
         </style>
         <script>
-            function openInApp(url) {{
+            function openInApp(url, type, query) {{
                 // Convert web URL to Apple Music app URL
-                let appUrl = url.replace('https://music.apple.com', 'music:');
+                let appUrl;
+                if (type === 'search') {{
+                    appUrl = `music://music.apple.com/search?term=${{encodeURIComponent(query)}}`;
+                }} else if (type === 'song') {{
+                    appUrl = url.replace('https://music.apple.com', 'music://music.apple.com');
+                }}
                 window.location.href = appUrl;
-                
-                // Fallback to web version after a short delay if app doesn't open
-                setTimeout(function() {{
-                    window.location.href = url;
-                }}, 1000);
             }}
         </script>
     </head>
@@ -205,9 +205,8 @@ def write_error_report(filename, failed_tracks):
     """
     
     for track in failed_tracks:
-        # Create search links for different combinations
-        title_artist = urllib.parse.quote(f"{track['title']} {track['artist']}")
-        title_only = urllib.parse.quote(track['title'])
+        title_artist = f"{track['title']} {track['artist']}"
+        title_only = track['title']
         
         html_content += f"""
         <div class="track">
@@ -217,13 +216,14 @@ def write_error_report(filename, failed_tracks):
             ISRC: {track['isrc']}</p>
             
             <div class="button-group">
-                <button onclick="openInApp('https://music.apple.com/{country_code}/search?term={title_artist}')" class="search-link">
+                <button onclick="openInApp(null, 'search', '{html.escape(title_artist)}')" class="search-link">
                     Search Title + Artist in App
                 </button>
-                <button onclick="openInApp('https://music.apple.com/{country_code}/search?term={title_only}')" class="search-link">
+                <button onclick="openInApp(null, 'search', '{html.escape(title_only)}')" class="search-link">
                     Search Title Only in App
                 </button>
-                <a href="https://music.apple.com/{country_code}/search?term={title_artist}" target="_blank" class="search-link">
+                <a href="https://music.apple.com/{country_code}/search?term={urllib.parse.quote(title_artist)}" 
+                   target="_blank" class="search-link">
                     Open in Browser
                 </a>
             </div>
@@ -232,13 +232,14 @@ def write_error_report(filename, failed_tracks):
         if track.get('alternatives'):
             html_content += '<div class="alternative"><p>Possible matches (but below confidence threshold):</p><ul>'
             for alt in track['alternatives']:
+                song_url = f"https://music.apple.com/{country_code}/song/{alt['id']}"
                 html_content += f"""
                 <li>{html.escape(alt['name'])} by {html.escape(alt['artist'])} 
                     (Confidence: {alt['confidence']:.2f})<br>
-                    <button onclick="openInApp('https://music.apple.com/{country_code}/song/{alt['id']}')" class="search-link">
+                    <button onclick="openInApp('{song_url}', 'song')" class="search-link">
                         Open in App
                     </button>
-                    <a href="https://music.apple.com/{country_code}/song/{alt['id']}" target="_blank" class="search-link">
+                    <a href="{song_url}" target="_blank" class="search-link">
                         Open in Browser
                     </a>
                 </li>"""
